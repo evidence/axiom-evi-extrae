@@ -25,6 +25,20 @@ AC_DEFUN([AX_SYSTEM_TYPE],
 		target_cpu="arm"
 		target_os="linux"
 	fi
+
+	AC_ARG_ENABLE(aarch64,
+	   AC_HELP_STRING(
+	      [--enable-aarch64],
+	      [Enable compilation for ARM 64bit (AARCH64) architecture (disabled by default; needed when cross-compiling for ARM 64bit)]
+	   ),
+	   [enable_aarch64="${enableval}"],
+	   [enable_aarch64="no"]
+	)
+	IS_AARCH64_MACHINE=${enable_aarch64}
+	if test "${IS_AARCH64_MACHINE}" = "yes" ; then
+		target_cpu="aarch64"
+		target_os="linux"
+	fi
 	
 	AC_ARG_ENABLE(sparc64,
 	   AC_HELP_STRING(
