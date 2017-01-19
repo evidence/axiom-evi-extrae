@@ -202,6 +202,9 @@ static int ReadWrite_Event (event_t * event, unsigned long long time,
 					case PWRITEV_EV:
 						io_type = PWRITEV_VAL_EV;
 						break;
+					case IOCTL_EV:
+						io_type = IOCTL_VAL_EV;
+						break;
 					default:
 						io_type = 0;
 						break;
@@ -1729,6 +1732,7 @@ SingleEv_Handler_t PRV_MISC_Event_Handlers[] = {
 	{ PREADV_EV, ReadWrite_Event },
 	{ WRITEV_EV, ReadWrite_Event },
 	{ PWRITEV_EV, ReadWrite_Event },
+	{ IOCTL_EV, ReadWrite_Event },
 	{ APPL_EV, Appl_Event },
 	{ TRACE_INIT_EV, InitTracing_Event },
 	{ USER_EV, User_Event },
