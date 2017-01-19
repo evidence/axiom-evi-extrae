@@ -82,6 +82,7 @@ void Share_MISC_Operations (void);
 #define WRITEV_LBL                      "writev()"
 #define PREADV_LBL                      "preadv()"
 #define PWRITEV_LBL                     "pwritev()"
+#define IOCTL_LBL                       "ioctl()"
 #define IO_DESCRIPTOR_LBL               "I/O descriptor"
 #define IO_SIZE_LBL                     "I/O size"
 #define IO_DESCRIPTOR_TYPE_LBL          "I/O descriptor type"

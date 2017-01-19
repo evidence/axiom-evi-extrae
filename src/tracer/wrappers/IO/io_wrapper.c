@@ -106,6 +106,7 @@ static ssize_t (*real_preadv)(int fd, const struct iovec *iov, int iovcnt, off_t
 static ssize_t (*real_preadv64)(int fd, const struct iovec *iov, int iovcnt, off_t offset)      = NULL;
 static ssize_t (*real_pwritev)(int fd, const struct iovec *iov, int iovcnt, off_t offset)       = NULL;
 static ssize_t (*real_pwritev64)(int fd, const struct iovec *iov, int iovcnt, __off64_t offset) = NULL;
+static int     (*real_ioctl)(int fd, int request, ...)                                          = NULL;
 
 /** 
  * Extrae_iotrace_init
@@ -143,6 +144,7 @@ void Extrae_iotrace_init (void)
   real_preadv64  = (ssize_t(*)(int, const struct iovec *, int, __off64_t)) dlsym (RTLD_NEXT, "preadv64");
   real_pwritev   = (ssize_t(*)(int, const struct iovec *, int, off_t)) dlsym (RTLD_NEXT, "pwritev");
   real_pwritev64 = (ssize_t(*)(int, const struct iovec *, int, __off64_t)) dlsym (RTLD_NEXT, "pwritev64");
+  real_ioctl     = (int(*)(int, int, ...)) dlsym(RTLD_NEXT, "ioctl");
 
 #  if defined(DEBUG)
   fprintf(stderr, "[DEBUG] Extrae installed the following I/O hooks:\n");
@@ -162,6 +164,7 @@ void Extrae_iotrace_init (void)
   fprintf(stderr, "[DEBUG] preadv64 hooked at %p\n", real_preadv64);
   fprintf(stderr, "[DEBUG] pwritev hooked at %p\n", real_pwritev);
   fprintf(stderr, "[DEBUG] pwritev64 hooked at %p\n", real_pwritev64);
+  fprintf(stderr, "[DEBUG] ioctl hooked at %p\n", real_ioctl);
 #  endif
 
 # else
@@ -1195,6 +1198,59 @@ ssize_t pwritev64(int fd, const struct iovec *iov, int iovcnt, __off64_t offset)
 }
 
 
+int ioctl(int fd, int request, char *argp)
+{
+  /* Check whether IO instrumentation is enabled */
+  int canInstrument = EXTRAE_INITIALIZED()                 &&
+                      !Backend_inInstrumentation(THREADID) && 
+                      mpitrace_on &&
+                      Extrae_get_trace_io();
+  ssize_t res;
+
+  /* Initialize the module if the pointer to the real call is not yet set */
+  if (real_ioctl == NULL)
+  {
+    Extrae_iotrace_init();
+  }
+
+#if defined(DEBUG)
+  if (canInstrument)
+  {
+    fprintf (stderr, PACKAGE_NAME": ioctl is at %p\n", real_ioctl);
+    fprintf (stderr, PACKAGE_NAME": ioctl params %d %d %p\n", fd, request, argp);
+  }
+#endif
+
+  if (real_ioctl != NULL && canInstrument)
+  {
+    /* Instrumentation is enabled, emit events and invoke the real call */
+    Backend_Enter_Instrumentation (4+Caller_Count[CALLER_IO]);
+    Probe_IO_ioctl_Entry (fd, request);
+    TRACE_IO_CALLER(LAST_READ_TIME, 3);
+    res = real_ioctl (fd, request, argp);
+    Probe_IO_ioctl_Exit ();
+    Backend_Leave_Instrumentation ();
+  }
+  else if (real_ioctl != NULL && !canInstrument)
+  {
+    /* Instrumentation is not enabled, bypass to the real call */
+    res = real_ioctl (fd, request, argp);
+  }
+  else
+  {
+    /*
+     * An error is thrown if the application uses this symbol but during the initialization 
+     * we couldn't find the real implementation. This kind of situation could happen in the 
+     * very strange case where, by the time this symbol is first called, the libc (where the 
+     * real implementation is) has not been loaded yet. One suggestion if we see this error
+     * is to try to prepend the libc.so to the LD_PRELOAD to force to load it first. 
+     */
+    fprintf (stderr, PACKAGE_NAME": ioctl is not hooked! exiting!!\n");
+    abort();
+  }
+
+  return res;
+}
 
 # endif /* -DPIC */
 
