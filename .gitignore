@@ -42,3 +42,4 @@ config/lt~obsolete.m4
 nbproject
 ar-lib
 build*/
+cscope*
