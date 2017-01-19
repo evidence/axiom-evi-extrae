@@ -14,6 +14,7 @@ config/ltoptions.m4
 config/ltsugar.m4
 config/ltversion.m4
 config/lt~obsolete.m4
+cscope*
 config/missing
 config/test-driver
 configure
