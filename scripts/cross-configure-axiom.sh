@@ -30,7 +30,7 @@ PATH=$PATH:$SYSROOT_DIR/usr/bin ; export PATH
 ../configure --prefix=$PREFIX \
 	     --build=$BUILD_ID --host=$TARGET_ID --target=$TARGET_ID \
 	     --enable-aarch64 --with-sysroot=$SYSROOT_DIR \
-	     --without-binutils \
+	     --without-binutils --disable-xmltest \
              --enable-nanos --disable-xmltest --without-mpi --without-unwind \
 	     --without-dyninst --without-papi \
 	     --enable-instrument-dynamic-memory --enable-instrument-io \
