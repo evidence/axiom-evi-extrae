@@ -1,7 +1,6 @@
 *~
 *.o
 *.lo
-Makefile
 Makefile.in
 common.in
 *.la
