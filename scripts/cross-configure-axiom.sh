@@ -1,5 +1,7 @@
 #!/bin/sh
 
+BASEDIR=$(dirname "$0")
+
 [ -z "$AXIOMHOME" ] && AXIOMHOME=$HOME/axiom-evi
 for arg in "$@";do
     echo "$arg" | grep -q '^--with-axiomhome=' \
@@ -27,11 +29,11 @@ PATH=$PATH:$SYSROOT_DIR/usr/bin ; export PATH
 
 [ -z "$PREFIX" ] && PREFIX=$SYSROOT_DIR
 
-../configure --prefix=$PREFIX \
+$BASEDIR/../configure --prefix=$PREFIX \
 	     --build=$BUILD_ID --host=$TARGET_ID --target=$TARGET_ID \
 	     --enable-aarch64 --with-sysroot=$SYSROOT_DIR \
 	     --without-binutils --disable-xmltest \
-             --enable-nanos --disable-xmltest --without-mpi --without-unwind \
+             --enable-nanos --without-mpi --without-unwind \
 	     --without-dyninst --without-papi \
 	     --enable-instrument-dynamic-memory --enable-instrument-io \
 	     "$@"
