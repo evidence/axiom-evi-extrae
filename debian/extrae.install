@@ -1,0 +1,8 @@
+/usr/bin/*
+/usr/libexec/*
+/usr/etc/*
+/usr/lib/*.so*
+/usr/share/man/*
+/usr/share/doc/*   /usr/share/doc/extrae/
+/usr/share/example /usr/share/doc/extrae/
+/usr/share/tests   /usr/share/doc/extrae/
