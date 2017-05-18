@@ -1,0 +1,11 @@
+changelog
+extrae-dev.debhelper.log
+extrae-dev.substvars
+extrae-dev/
+extrae.debhelper.log
+extrae.postinst.debhelper
+extrae.postrm.debhelper
+extrae.substvars
+extrae/
+files
+tmp/
