@@ -13,7 +13,7 @@ done
     exit 255;
 }
 
-if [ "$P" = "1" ]; then
+if [ "$FS" = "seco" ]; then
 
     TARGET_DIR=$(realpath ${ROOTFS})
 #    SYSROOT_DIR=$(realpath ${LINARO}/sysroot)
@@ -22,28 +22,12 @@ if [ "$P" = "1" ]; then
         
     BUILD_ID='x86_64-unknown-linux-gnu'
     TARGET_ID='aarch64-linux-gnu'
-    
-#    CC="$LINARO/host/usr/bin/aarch64-linux-gnu-gcc" ; export CC
-#    CXX="$LINARO/host/usr/bin/aarch64-linux-gnu-g++" ; export CXX
-#    FC="$LINARO/host/usr/bin/aarch64-linux-gnu-gfortran" ; export FC
-#    export PATH=$PATH:$LINARO/host/usr/bin
-    
+        
     [ -z "$PREFIX" ] && PREFIX=$HOST_DIR
 
     export PATH=$PATH:$HOST_DIR/usr/bin
-    # questo risolve i problemi alla fine (ma li crea all'inizio)
-    #export LDFLAGS="-Wl,-rpath-link -Wl,${TARGET_DIR}/lib/aarch64-linux-gnu -Wl,-rpath-link -Wl,${TARGET_DIR}/usr/lib/aarch64-linux-gnu         -Wl,-rpath-link -Wl,${TARGET_DIR}/lib -Wl,-rpath-link -Wl,${TARGET_DIR}/usr/lib"
-    
-#    export CFLAGS="-I${ROOTFS}/usr/include/aarch64-linux-gnu"
-#    export LDFLAGS="-L${ROOTFS}/usr/lib/aarch64-linux-gnu -L${ROOTFS}/lib/aarch64-linux-gnu"
-    
-#    export CPPFLAGS="-isystem ${ROOTFS}/usr/include -isystem ${ROOTFS}/usr/include/aarch64-linux-gnu"
-#     export CFLAGS="-L${ROOTFS}/usr/lib -L${ROOTFS}/lib -L${ROOTFS}/usr/lib/aarch64-linux-gnu -L${ROOTFS}/lib/aarch64-linux-gnu"
     
     export XML2_CONFIG="$(realpath ${ROOTFS}/usr/bin/xml2-config)"
-#    export CFLAGS="--sysroot=${ROOTFS}"
-#    export CPPFLAGS="--sysroot=${ROOTFS}"
-#    export CXXFLAGS="--sysroot=${ROOTFS}"
         
 else
     
