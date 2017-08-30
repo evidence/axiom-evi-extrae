@@ -62,6 +62,6 @@ $BASEDIR/../configure --prefix=$PREFIX \
 	     --enable-aarch64 --with-sysroot=$SYSROOT_DIR \
 	     --with-gnu-ld --without-binutils --disable-xmltest \
              --enable-nanos --without-mpi --without-unwind \
-	     --without-dyninst --without-papi \
+	     --without-dyninst --without-papi --enable-shared \
 	     --enable-instrument-dynamic-memory --enable-instrument-io \
 	     "$@"
