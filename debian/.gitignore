@@ -6,6 +6,9 @@ extrae.debhelper.log
 extrae.postinst.debhelper
 extrae.postrm.debhelper
 extrae.substvars
+extrae-dbg.debhelper.log
+extrae-dbg.substvars
+extrae-dbg/
 extrae/
 files
 tmp/
