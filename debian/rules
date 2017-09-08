@@ -14,7 +14,7 @@ build-indep:
 
 binary: binary-arch binary-indep
 
-binary-arch: make-changelog
+binary-arch: make-changelog init-install
 	dh_testroot
 	dh_prep
 	dh_installdirs
@@ -50,7 +50,7 @@ binary-arch: make-changelog
 	dh_gconf
 	dh_icons
 	dh_perl
-	dh_usrlocal
+#	dh_usrlocal
 
 	dh_link
 	dh_installxfonts
@@ -71,6 +71,22 @@ clean: clean-changelog
 	dh_testdir
 #	make clean
 	dh_clean
+
+#
+# init-install
+#
+
+.PHONY: init-install
+
+init-install:
+ifeq ($(FS),x86)
+	ln -sf $(DEBIAN_DIR)/extrae-dev.install.x86  $(DEBIAN_DIR)/extrae-dev.install
+	ln -sf $(DEBIAN_DIR)/extrae.install.x86  $(DEBIAN_DIR)/extrae.install
+else
+	ln -sf $(DEBIAN_DIR)/extrae-dev.install.other  $(DEBIAN_DIR)/extrae-dev.install
+	ln -sf $(DEBIAN_DIR)/extrae.install.other  $(DEBIAN_DIR)/extrae.install
+endif
+
 
 #
 # changelog

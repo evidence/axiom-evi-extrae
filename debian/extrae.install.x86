@@ -1,0 +1,8 @@
+/usr/local/bin/*
+/usr/local/libexec/*
+/usr/local/etc/*
+/usr/local/lib/*.so*
+/usr/local/share/man/*
+/usr/local/share/doc/*   /usr/share/doc/extrae/
+/usr/local/share/example /usr/share/doc/extrae/
+/usr/local/share/tests   /usr/share/doc/extrae/
