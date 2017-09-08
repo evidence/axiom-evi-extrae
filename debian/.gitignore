@@ -12,3 +12,5 @@ extrae-dbg/
 extrae/
 files
 tmp/
+extrae-dev.install
+extrae.install
