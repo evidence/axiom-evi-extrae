@@ -54,9 +54,9 @@ install-data-hook:
 #else
 	$(top_srcdir)/substitute $(SED) "@sub_Extrae_eventandcounters@" Extrae_event pyextrae/common/extrae.py
 #endif
-	mkdir -p $(libexecdir)/pyextrae
-	cp -rL pyextrae/* $(libexecdir)/pyextrae
-	rm $(libexecdir)/pyextrae/common/extrae.py.in
+	mkdir -p $(DESTDIR)$(libexecdir)/pyextrae
+	cp -rL pyextrae/* $(DESTDIR)$(libexecdir)/pyextrae
+	rm $(DESTDIR)$(libexecdir)/pyextrae/common/extrae.py.in
 
 CLEANFILES = pyextrae/common/extrae.py
 
