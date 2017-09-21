@@ -53,6 +53,10 @@ unsigned IsMPICollective (unsigned EvType);
 
 #define NULL_EV -1
 
+/* Values */
+#define EVT_BEGIN                1
+#define EVT_END                  0
+
 /* Trace options, just do a bitwise or/and with these values */
 #define TRACEOPTION_NONE            (0)
 #define TRACEOPTION_HWC             (1<<0)
@@ -84,6 +88,13 @@ unsigned IsMPICollective (unsigned EvType);
 #define SAMPLING_ADDRESS_ALLOCATED_OBJECT_EV 32000007
 #define SAMPLING_ADDRESS_STATIC_OBJECT_EV    32000008
 #define SAMPLING_ADDRESS_ALLOCATED_OBJECT_CALLER_EV 32000100 /* internal purposes, not emitted into paraver tracefile */
+
+#define SYSCALL_EV               40000000
+
+enum {
+  SYSCALL_SCHED_YIELD_EV,
+	SYSCALL_EVENTS_COUNT
+};
 
 #define APPL_EV                  40000001
 #define TRACE_INIT_EV            40000002
@@ -149,6 +160,23 @@ unsigned IsMPICollective (unsigned EvType);
 #define MEMKIND_REALLOC_EV        40000047
 #define MEMKIND_POSIX_MEMALIGN_EV 40000048
 #define MEMKIND_FREE_EV           40000049
+#define MEMKIND_PARTITION_EV      40001000
+
+enum
+{
+  MEMKIND_PARTITION_DEFAULT_VAL = 1,
+  MEMKIND_PARTITION_HBW_VAL,
+  MEMKIND_PARTITION_HBW_HUGETLB_VAL,
+  MEMKIND_PARTITION_HBW_PREFERRED_VAL,
+  MEMKIND_PARTITION_HBW_PREFERRED_HUGETLB_VAL,
+  MEMKIND_PARTITION_HUGETLB_VAL,
+  MEMKIND_PARTITION_HBW_GBTLB_VAL,
+  MEMKIND_PARTITION_HBW_PREFERRED_GBTLB_VAL,
+  MEMKIND_PARTITION_GBTLB_VAL,
+  MEMKIND_PARTITION_HBW_INTERLEAVE_VAL,
+  MEMKIND_PARTITION_INTERLEAVE_VAL,
+  MEMKIND_PARTITION_OTHER_VAL,
+};
 
 #define DYNAMIC_MEM_EV                     MALLOC_EV         /* Used in merger only */
 #define DYNAMIC_MEM_REQUESTED_SIZE_EV      DYNAMIC_MEM_EV+1  /* Used in merger only */
@@ -626,10 +654,6 @@ enum {
 #define WAIT_BEGIN_VAL          3
 #define WAIT_END_VAL            4
 #endif
-
-/* Values */
-#define EVT_BEGIN                1
-#define EVT_END                  0
 
 #define STATE_ANY                -1
 #define STATE_IDLE               0

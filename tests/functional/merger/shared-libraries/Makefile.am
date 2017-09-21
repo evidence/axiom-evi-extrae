@@ -1,6 +1,6 @@
 include $(top_srcdir)/PATHS
 
-bin_PROGRAMS = main_nodebug main_debug
+check_PROGRAMS = main_nodebug main_debug
 main_nodebug_SOURCES = fA.c fB.c main.c
 main_debug_SOURCES = fA.c fB.c main.c
 
@@ -12,7 +12,9 @@ TESTS += \
  test-shared-library-debug.sh
 endif
 
-EXTRA_DIST = $(TESTS)
+EXTRA_DIST = \
+ test-shared-library-nodebug.sh \
+ test-shared-library-debug.sh
 
 libfA_nodebug.so: fA.c
 	$(CC) -fPIC -DPIC fA.c -o libfA_nodebug.so -shared

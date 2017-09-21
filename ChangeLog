@@ -1,6 +1,31 @@
 
 ChangeLog
  [ + added, - removed, * changed ]
+ * 03Mar2017 Fixed missing python scripts after make install
+ * 14Feb2017 Fixed conflict between sampling and I/O tracing where we would capture I/O calls inside the sampling handler
+ * 13Feb2017 Fixed critical bug in __kmpc_fork_call due to the use of the non-reentrant par_func variable to store the user task pointer 
+ * 13Feb2017 Upgraded Dyninst compabitility to series 9.x 
+ * 31Jan2017 Fixes bug in libdwarf detection macro
+ * 12Jan2017 Fixes shared-libraries tests being compiled during 'make' instead
+ of during 'make check'
+ + 28Dec2016 Add instrumentation support for sched_yield syscall and others
+ + 27Dec2016 Added support for Python MPI and multiprocessing tracing
+ * 13Dec2016 Adds new build information into configured.sh script
+ * 13Dec2016 Adds tracing of MPI IO size in Fortran
+ * 01Dec2016 Increases default buffer size in the examples by x10
+ * 17Nov2016 Patched IO calls again to save/restore the value of errno twice, before and after calling the real I/O symbol
+ * 14Nov2016 Builds additional C/Fortran tracing library by default
+ * 14Nov2016 Fixes MPI_Ialltoallv label
+ - 08Nov2016 Removed flag -Wall from tests/overhead
+ * 08Nov2016 Patched IO calls to save/restore the value of errno at entry/exit of the wrappers
+ * 07Nov2016 Fixes PEBS memory translations
+ * 27Oct2016 Fixes Fortran interfaces for MPI3 non-blocking collective calls
+ * 21Oct2016 Changed checks in IO wrappers to ensure the compiler doesn't optimize the conditions and tests for an invalid THREADID
+ * 14Oct2016 Fixed interface and wrapper for MPI_Intercomm_create that had a recursion 
+ * 14Oct2016 Added event for memkind partition
+ * 11Oct2016 Fixes online and dyninst tests
+ * 10Oct2016 Fixes IO segfault when opening non-existing file and enables it by default
+ * 10Oct2016 Updated configure check for newer Cray XT systems 
  * 23Sep2016 Upgraded to v3.4.1
  * 23Sep2016 Fixed Java and MPI checks 
  * 23Sep2016 Run JAVA checks with make check instead of with make installcheck

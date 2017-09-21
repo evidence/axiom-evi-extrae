@@ -5,9 +5,16 @@
 #    Initializations    #
 #########################
 
+m4_define([extrae_major_version], [3])
+m4_define([extrae_minor_version], [4])
+m4_define([extrae_micro_version], [3])
+
+m4_define([extrae_version],
+					      [extrae_major_version.extrae_minor_version.extrae_micro_version])
+
 # Initialize autoconf & define package name, version and bug-report address 
 #  -- keep version in sync with src/common/extrae_version.h
-AC_INIT(Extrae, 3.4.1, tools@bsc.es)
+AC_INIT(Extrae, [extrae_version], tools@bsc.es)
 
 # Safety check to ensure that the directory told with `--srcdir` contains the source code
 #AC_CONFIG_SRCDIR(src/mpitrace.c)
@@ -374,29 +381,45 @@ AM_CONDITIONAL(GENERATE_DOCUMENTATION, test "${enable_doc}" = "yes" )
 
 AC_ARG_ENABLE(instrument-io,
 	AC_HELP_STRING(
-		[--enable-instrument-io],
-		[Enables instrumentation for basic I/O (read, write) calls  (experimental, disabled by default)]
+		[--disable-instrument-io],
+		[Disables instrumentation for basic I/O (read, write) calls (experimental, enabled by default)]
 	),
 	[enable_instrument_io="${enableval}"],
-	[enable_instrument_io="no"]
+	[enable_instrument_io="yes"]
 )
 if test "${enable_instrument_io}" = "yes" ; then
-	AC_DEFINE([INSTRUMENT_IO], [1], [Determine whether read/write are meant to be instrumented])
+	AC_DEFINE([INSTRUMENT_IO], [1], [Determine whether I/O calls are instrumented])
 fi
+AM_CONDITIONAL(INSTRUMENT_IO, test "${enable_instrument_io}" = "yes" )
 
 AC_ARG_ENABLE(instrument-dynamic-memory,
 	AC_HELP_STRING(
-		[--enable-instrument-dynamic-memory],
-		[Enables instrumentation for dynamic memory (malloc, free, realloc) calls (experimental, disabled by default)]
+		[--disable-instrument-dynamic-memory],
+		[Disables instrumentation for dynamic memory (malloc, free, realloc) calls (experimental, enabled by defaultl)]
 	),
 	[enable_instrument_dynamic_memory="${enableval}"],
-	[enable_instrument_dynamic_memory="no"]
+	[enable_instrument_dynamic_memory="yes"]
 )
 
 if test "${enable_instrument_dynamic_memory}" = "yes" ; then
-	AC_DEFINE([INSTRUMENT_DYNAMIC_MEMORY], [1], [Determine whether dynamic memory calls are meant to be instrumented])
+	AC_DEFINE([INSTRUMENT_DYNAMIC_MEMORY], [1], [Determine whether dynamic memory calls are instrumented])
 fi
+AM_CONDITIONAL(INSTRUMENT_DYNAMIC_MEMORY, test "${enable_instrument_dynamic_memory}" = "yes" )
+
 AX_PROG_MEMKIND
+
+AC_ARG_ENABLE(instrument-syscall,
+  AC_HELP_STRING(
+    [--disable-instrument-syscall],
+    [Disables instrumentation for system calls (other than I/O and mallocs) (experimental, enabled by default)]
+  ),
+  [enable_instrument_syscall="${enableval}"],
+  [enable_instrument_syscall="yes"]
+)
+if test "${enable_instrument_syscall}" = "yes" ; then
+  AC_DEFINE([INSTRUMENT_SYSCALL], [1], [Determine whether system calls (other than I/O and mallocs) are instrumented])
+fi
+AM_CONDITIONAL(INSTRUMENT_SYSCALL, test "${enable_instrument_syscall}" = "yes" )
 
 AC_ARG_ENABLE(bfd-generate-addresses,
 	AC_HELP_STRING(
@@ -595,12 +618,14 @@ AC_CONFIG_FILES([
   src/tracer/wrappers/Makefile 
   src/tracer/wrappers/MPI/Makefile \
   src/tracer/wrappers/OMP/Makefile \
+  src/tracer/wrappers/OMP/intel-kmpc-11-intermediate/Makefile \
   src/tracer/wrappers/CUDA/Makefile \
   src/tracer/wrappers/OPENCL/Makefile \
   src/tracer/wrappers/pthread/Makefile \
   src/tracer/wrappers/openshmem/Makefile \
   src/tracer/wrappers/MALLOC/Makefile \
   src/tracer/wrappers/IO/Makefile \
+  src/tracer/wrappers/SYSCALL/Makefile \
   src/tracer/wrappers/fork/Makefile \
   src/tracer/wrappers/JAVA/Makefile \
   src/tracer/stats/Makefile \
@@ -646,6 +671,8 @@ AC_CONFIG_FILES([src/tracer/online/Makefile src/tracer/online/extractors/Makefil
 ### AC_CONFIG_FILES([src/tracer/hwc/myrinet_hwc/Makefile src/tracer/hwc/myrinet_hwc/GM/Makefile src/tracer/hwc/myrinet_hwc/MX/Makefile])
 
 AC_CONFIG_LINKS([tests/functional/helper_functions.bash:tests/functional/helper_functions.bash] \
+		[tests/functional/launcher/extrae.xml:tests/functional/launcher/extrae.xml] \
+		[tests/functional/launcher/extrae-nothing-to-instrument.xml:tests/functional/launcher/extrae-nothing-to-instrument.xml] \
 		[tests/functional/tracer/MPI/trace-static.sh:tests/functional/tracer/MPI/trace-static.sh] \
 		[tests/functional/tracer/MPI/trace-ldpreload.sh:tests/functional/tracer/MPI/trace-ldpreload.sh] \
 		[tests/functional/tracer/MPI/trace-ldpreloadf.sh:tests/functional/tracer/MPI/trace-ldpreloadf.sh] \
@@ -736,7 +763,13 @@ AC_CONFIG_LINKS([tests/functional/helper_functions.bash:tests/functional/helper_
 		[doc/user-guide/internals.pl:doc/user-guide/internals.pl] \
 		[doc/user-guide/labels.pl:doc/user-guide/labels.pl] \
 		[doc/user-guide/user-guide.css:doc/user-guide/user-guide.css] \
-		[doc/user-guide/user-guide.html:doc/user-guide/user-guide.html]
+		[doc/user-guide/user-guide.html:doc/user-guide/user-guide.html] \
+    [src/others/pyextrae/multiprocessing/__init__.py:src/others/pyextrae/multiprocessing/__init__.py:] \
+    [src/others/pyextrae/__init__.py:src/others/pyextrae/__init__.py] \
+    [src/others/pyextrae/sequential/__init__.py:src/others/pyextrae/sequential/__init__.py] \
+    [src/others/pyextrae/mpi/__init__.py:src/others/pyextrae/mpi/__init__.py] \
+    [src/others/pyextrae/common/extrae.py.in:src/others/pyextrae/common/extrae.py.in] \
+    [src/others/pyextrae/common/__init__.py:src/others/pyextrae/common/__init__.py]
 	)
 
 #########################################

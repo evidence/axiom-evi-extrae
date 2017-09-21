@@ -1,4 +1,5 @@
 tags
+/build*/
 Makefile.in
 aclocal.m4
 autom4te.cache/
@@ -85,3 +86,13 @@ tests/src/Makefile.in
 tests/src/common/Makefile.in
 tests/src/tracer/Makefile.in
 tests/src/tracer/clocks/Makefile.in
+Makefile
+PREFIX
+config.h
+config.h.in~
+config.log
+config.status
+extrae-*.tar.bz2
+libtool
+stamp-h1
+

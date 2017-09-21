@@ -25,14 +25,14 @@
 
 /*
  * __USE_FILE_OFFSET64
- * 
- * Extrae is compiled by default with this flag to support large files. 
- * When defined, some I/O calls such as preadv, pwritev... are renamed 
- * automatically by the compiler to their 64-bit versions preadv64, pwritev64... 
- * 
- * This file needs to be compiled without this flag in order to be able to 
- * write both wrappers without the compiler changing their names automatically 
- * from the 32-bit version into the 64-bit. 
+ *
+ * Extrae is compiled by default with this flag to support large files.
+ * When defined, some I/O calls such as preadv, pwritev... are renamed
+ * automatically by the compiler to their 64-bit versions preadv64, pwritev64...
+ *
+ * This file needs to be compiled without this flag in order to be able to
+ * write both wrappers without the compiler changing their names automatically
+ * from the 32-bit version into the 64-bit.
  *
  */
 #ifdef __USE_FILE_OFFSET64
@@ -52,7 +52,7 @@
 #endif
 #ifdef HAVE_SYS_UIO_H
 # include <sys/uio.h>
-#endif 
+#endif
 #ifdef HAVE_SYS_TYPES_H
 # include <sys/types.h>
 #endif
@@ -64,6 +64,14 @@
 #endif
 #ifdef HAVE_STDARG_H
 # include <stdarg.h>
+#endif
+#ifdef HAVE_ERRNO_H
+/*
+ * We need errno to save its value before entering the IO wrappers and restore
+ * it before leaving, as it may change during the execution of the wrapper,
+ * which causes conflicts with applications that check it (e.g. NetCDF)
+ */
+# include <errno.h>
 #endif
 
 #include "io_wrapper.h"
@@ -106,23 +114,22 @@ static ssize_t (*real_preadv)(int fd, const struct iovec *iov, int iovcnt, off_t
 static ssize_t (*real_preadv64)(int fd, const struct iovec *iov, int iovcnt, off_t offset)      = NULL;
 static ssize_t (*real_pwritev)(int fd, const struct iovec *iov, int iovcnt, off_t offset)       = NULL;
 static ssize_t (*real_pwritev64)(int fd, const struct iovec *iov, int iovcnt, __off64_t offset) = NULL;
-static int     (*real_ioctl)(int fd, int request, ...)                                          = NULL;
 
-/** 
+/**
  * Extrae_iotrace_init
- * 
- * Initialization routine for the I/O tracing module. Performs a discovery of the 
+ *
+ * Initialization routine for the I/O tracing module. Performs a discovery of the
  * address of the real implementation of the I/O calls through dlsym. The initialization
- * is deferred until any of the instrumented symbols is used for the first time. 
+ * is deferred until any of the instrumented symbols is used for the first time.
  */
 void Extrae_iotrace_init (void)
 {
 # if defined(PIC) /* Only available for .so libraries */
 
-  /* 
-   * Find the first implementation of the I/O calls in the default library search order 
-   * after the current library. Not finding any of the symbols doesn't throw an error 
-   * unless the application tries to use it later. 
+  /*
+   * Find the first implementation of the I/O calls in the default library search order
+   * after the current library. Not finding any of the symbols doesn't throw an error
+   * unless the application tries to use it later.
    */
   real_open      = (int(*)(const char *, int, ...)) dlsym(RTLD_NEXT, "open");
   real_open64    = (int(*)(const char *, int, ...)) dlsym(RTLD_NEXT, "open64");
@@ -144,7 +151,6 @@ void Extrae_iotrace_init (void)
   real_preadv64  = (ssize_t(*)(int, const struct iovec *, int, __off64_t)) dlsym (RTLD_NEXT, "preadv64");
   real_pwritev   = (ssize_t(*)(int, const struct iovec *, int, off_t)) dlsym (RTLD_NEXT, "pwritev");
   real_pwritev64 = (ssize_t(*)(int, const struct iovec *, int, __off64_t)) dlsym (RTLD_NEXT, "pwritev64");
-  real_ioctl     = (int(*)(int, int, ...)) dlsym(RTLD_NEXT, "ioctl");
 
 #  if defined(DEBUG)
   fprintf(stderr, "[DEBUG] Extrae installed the following I/O hooks:\n");
@@ -164,7 +170,6 @@ void Extrae_iotrace_init (void)
   fprintf(stderr, "[DEBUG] preadv64 hooked at %p\n", real_preadv64);
   fprintf(stderr, "[DEBUG] pwritev hooked at %p\n", real_pwritev);
   fprintf(stderr, "[DEBUG] pwritev64 hooked at %p\n", real_pwritev64);
-  fprintf(stderr, "[DEBUG] ioctl hooked at %p\n", real_ioctl);
 #  endif
 
 # else
@@ -178,19 +183,25 @@ void Extrae_iotrace_init (void)
 
 /**
  * open
- * 
+ *
  * Wrapper for the system call 'open'
  */
 int open(const char *pathname, int flags, ...)
 {
+#ifdef HAVE_ERRNO_H
+  int errno_real = errno;
+#endif
   int mode = 0;
   int fd = -1;
 
   /* Check whether IO instrumentation is enabled */
   int canInstrument = EXTRAE_INITIALIZED()                 &&
-                      !Backend_inInstrumentation(THREADID) &&
                       mpitrace_on                          &&
                       Extrae_get_trace_io();
+
+  /* Can't be evaluated before because the compiler optimizes the if's clauses,
+	 * and THREADID calls a null callback if Extrae is not yet initialized */
+	if (canInstrument) canInstrument = !Backend_inInstrumentation(THREADID);
 
   if (flags & O_CREAT)
   {
@@ -218,12 +229,21 @@ int open(const char *pathname, int flags, ...)
   {
     /* Instrumentation is enabled, emit events and invoke the real call */
     Backend_Enter_Instrumentation (4+Caller_Count[CALLER_IO]);
-    fd = real_open (pathname, flags, mode);
+#ifdef HAVE_ERRNO_H                                                             
+	  errno = errno_real;                                                         
+#endif                                                                          
+		fd = real_open (pathname, flags, mode);
+#ifdef HAVE_ERRNO_H
+  	errno_real = errno;
+#endif
     Probe_IO_open_Entry (fd, pathname);
     TRACE_IO_CALLER(LAST_READ_TIME, 3);
 
     Probe_IO_open_Exit ();
     Backend_Leave_Instrumentation ();
+#ifdef HAVE_ERRNO_H
+  	errno = errno_real;
+#endif
   }
   else if (real_open != NULL && !canInstrument)
   {
@@ -233,11 +253,11 @@ int open(const char *pathname, int flags, ...)
   else
   {
     /*
-     * An error is thrown if the application uses this symbol but during the initialization 
-     * we couldn't find the real implementation. This kind of situation could happen in the 
-     * very strange case where, by the time this symbol is first called, the libc (where the 
+     * An error is thrown if the application uses this symbol but during the initialization
+     * we couldn't find the real implementation. This kind of situation could happen in the
+     * very strange case where, by the time this symbol is first called, the libc (where the
      * real implementation is) has not been loaded yet. One suggestion if we see this error
-     * is to try to prepend the libc.so to the LD_PRELOAD to force to load it first. 
+     * is to try to prepend the libc.so to the LD_PRELOAD to force to load it first.
      */
     fprintf (stderr, PACKAGE_NAME": open is not hooked! exiting!!\n");
     abort();
@@ -247,27 +267,33 @@ int open(const char *pathname, int flags, ...)
 
 /**
  * open64
- * 
+ *
  * Wrapper for the system call 'open64'
  */
 int open64(const char *pathname, int flags, ...)
 {
+#ifdef HAVE_ERRNO_H                                                             
+	int errno_real = errno;                                                       
+#endif
   int mode = 0;
   int fd = -1;
 
   /* Check whether IO instrumentation is enabled */
   int canInstrument = EXTRAE_INITIALIZED()                 &&
-                      !Backend_inInstrumentation(THREADID) &&
                       mpitrace_on                          &&
                       Extrae_get_trace_io();
 
+  /* Can't be evaluated before because the compiler optimizes the if's clauses,
+	 * and THREADID calls a null callback if Extrae is not yet initialized */
+  if (canInstrument) canInstrument = !Backend_inInstrumentation(THREADID);
+
   if (flags & O_CREAT)
-  {     
+  {
     va_list arg;
     va_start (arg, flags);
-    mode = va_arg (arg, int); 
+    mode = va_arg (arg, int);
     va_end (arg);
-  }     
+  }
 
   /* Initialize the module if the pointer to the real call is not yet set */
   if (real_open64 == NULL)
@@ -287,12 +313,21 @@ int open64(const char *pathname, int flags, ...)
   {
     /* Instrumentation is enabled, emit events and invoke the real call */
     Backend_Enter_Instrumentation (4+Caller_Count[CALLER_IO]);
+#ifdef HAVE_ERRNO_H
+  	errno = errno_real;
+#endif
     fd = real_open64 (pathname, flags, mode);
+#ifdef HAVE_ERRNO_H
+  	errno_real = errno;
+#endif
     Probe_IO_open_Entry (fd, pathname);
     TRACE_IO_CALLER(LAST_READ_TIME, 3);
 
     Probe_IO_open_Exit ();
     Backend_Leave_Instrumentation ();
+#ifdef HAVE_ERRNO_H
+  	errno = errno_real;
+#endif
   }
   else if (real_open64 != NULL && !canInstrument)
   {
@@ -302,11 +337,11 @@ int open64(const char *pathname, int flags, ...)
   else
   {
     /*
-     * An error is thrown if the application uses this symbol but during the initialization 
-     * we couldn't find the real implementation. This kind of situation could happen in the 
-     * very strange case where, by the time this symbol is first called, the libc (where the 
+     * An error is thrown if the application uses this symbol but during the initialization
+     * we couldn't find the real implementation. This kind of situation could happen in the
+     * very strange case where, by the time this symbol is first called, the libc (where the
      * real implementation is) has not been loaded yet. One suggestion if we see this error
-     * is to try to prepend the libc.so to the LD_PRELOAD to force to load it first. 
+     * is to try to prepend the libc.so to the LD_PRELOAD to force to load it first.
      */
     fprintf (stderr, PACKAGE_NAME": open64 is not hooked! exiting!!\n");
     abort();
@@ -316,18 +351,24 @@ int open64(const char *pathname, int flags, ...)
 
 /*
  * fopen
- * 
+ *
  * Wrapper for the system call 'fopen'
  */
 FILE * fopen(const char *path, const char *mode)
 {
+#ifdef HAVE_ERRNO_H
+ 	int errno_real = errno;
+#endif
   FILE *f = NULL;
 
   /* Check whether IO instrumentation is enabled */
   int canInstrument = EXTRAE_INITIALIZED()                 &&
-                      !Backend_inInstrumentation(THREADID) &&
                       mpitrace_on                          &&
                       Extrae_get_trace_io();
+
+  /* Can't be evaluated before because the compiler optimizes the if's clauses,
+	 * and THREADID calls a null callback if Extrae is not yet initialized */
+	if (canInstrument) canInstrument = !Backend_inInstrumentation(THREADID);
 
   /* Initialize the module if the pointer to the real call is not yet set */
   if (real_fopen == NULL)
@@ -346,13 +387,28 @@ FILE * fopen(const char *path, const char *mode)
   if (real_fopen != NULL && canInstrument)
   {
     /* Instrumentation is enabled, emit events and invoke the real call */
+		int fd = -1;
     Backend_Enter_Instrumentation (4+Caller_Count[CALLER_IO]);
+#ifdef HAVE_ERRNO_H
+  	errno = errno_real;
+#endif
     f = real_fopen (path, mode);
-    Probe_IO_fopen_Entry (fileno(f), path);
-    TRACE_IO_CALLER(LAST_READ_TIME, 3);
+#ifdef HAVE_ERRNO_H
+   	errno_real = errno;
+#endif
+		if (f != NULL)
+		{
+			fd = fileno(f);
+		}
 
-    Probe_IO_fopen_Exit ();
+		Probe_IO_fopen_Entry (fd, path);
+		TRACE_IO_CALLER(LAST_READ_TIME, 3);
+
+		Probe_IO_fopen_Exit ();
     Backend_Leave_Instrumentation ();
+#ifdef HAVE_ERRNO_H
+  	errno = errno_real;
+#endif
   }
   else if (real_fopen != NULL && !canInstrument)
   {
@@ -362,11 +418,11 @@ FILE * fopen(const char *path, const char *mode)
   else
   {
     /*
-     * An error is thrown if the application uses this symbol but during the initialization 
-     * we couldn't find the real implementation. This kind of situation could happen in the 
-     * very strange case where, by the time this symbol is first called, the libc (where the 
+     * An error is thrown if the application uses this symbol but during the initialization
+     * we couldn't find the real implementation. This kind of situation could happen in the
+     * very strange case where, by the time this symbol is first called, the libc (where the
      * real implementation is) has not been loaded yet. One suggestion if we see this error
-     * is to try to prepend the libc.so to the LD_PRELOAD to force to load it first. 
+     * is to try to prepend the libc.so to the LD_PRELOAD to force to load it first.
      */
     fprintf (stderr, PACKAGE_NAME": fopen is not hooked! exiting!!\n");
     abort();
@@ -376,18 +432,24 @@ FILE * fopen(const char *path, const char *mode)
 
 /*
  * fopen64
- * 
+ *
  * Wrapper for the system call 'fopen64'
  */
 FILE * fopen64(const char *path, const char *mode)
 {
+#ifdef HAVE_ERRNO_H
+	int errno_real = errno;
+#endif
   FILE *f = NULL;
 
   /* Check whether IO instrumentation is enabled */
   int canInstrument = EXTRAE_INITIALIZED()                 &&
-                      !Backend_inInstrumentation(THREADID) &&
                       mpitrace_on                          &&
                       Extrae_get_trace_io();
+
+  /* Can't be evaluated before because the compiler optimizes the if's clauses,
+	 * and THREADID calls a null callback if Extrae is not yet initialized */
+	if (canInstrument) canInstrument = !Backend_inInstrumentation(THREADID);
 
   /* Initialize the module if the pointer to the real call is not yet set */
   if (real_fopen64 == NULL)
@@ -406,13 +468,27 @@ FILE * fopen64(const char *path, const char *mode)
   if (real_fopen64 != NULL && canInstrument)
   {
     /* Instrumentation is enabled, emit events and invoke the real call */
+		int fd = -1;
     Backend_Enter_Instrumentation (4+Caller_Count[CALLER_IO]);
+#ifdef HAVE_ERRNO_H
+	  errno = errno_real;
+#endif
     f = real_fopen64 (path, mode);
-    Probe_IO_fopen_Entry (fileno(f), path);
-    TRACE_IO_CALLER(LAST_READ_TIME, 3);
+#ifdef HAVE_ERRNO_H
+    errno_real = errno;
+#endif
+		if (f != NULL)
+		{
+			fd = fileno(f);
+		}
+		Probe_IO_fopen_Entry (fd, path);
+		TRACE_IO_CALLER(LAST_READ_TIME, 3);
 
     Probe_IO_fopen_Exit ();
     Backend_Leave_Instrumentation ();
+#ifdef HAVE_ERRNO_H
+	  errno = errno_real;
+#endif
   }
   else if (real_fopen64 != NULL && !canInstrument)
   {
@@ -422,11 +498,11 @@ FILE * fopen64(const char *path, const char *mode)
   else
   {
     /*
-     * An error is thrown if the application uses this symbol but during the initialization 
-     * we couldn't find the real implementation. This kind of situation could happen in the 
-     * very strange case where, by the time this symbol is first called, the libc (where the 
+     * An error is thrown if the application uses this symbol but during the initialization
+     * we couldn't find the real implementation. This kind of situation could happen in the
+     * very strange case where, by the time this symbol is first called, the libc (where the
      * real implementation is) has not been loaded yet. One suggestion if we see this error
-     * is to try to prepend the libc.so to the LD_PRELOAD to force to load it first. 
+     * is to try to prepend the libc.so to the LD_PRELOAD to force to load it first.
      */
     fprintf (stderr, PACKAGE_NAME": fopen64 is not hooked! exiting!!\n");
     abort();
@@ -442,12 +518,18 @@ FILE * fopen64(const char *path, const char *mode)
  */
 ssize_t read (int fd, void *buf, size_t count)
 {
+#ifdef HAVE_ERRNO_H
+	int errno_real = errno;
+#endif
   /* Check whether IO instrumentation is enabled */
   int canInstrument = EXTRAE_INITIALIZED()                 &&
-                      !Backend_inInstrumentation(THREADID) && 
                       mpitrace_on                          &&
                       Extrae_get_trace_io();
   ssize_t res;
+
+  /* Can't be evaluated before because the compiler optimizes the if's clauses,
+	 * and THREADID calls a null callback if Extrae is not yet initialized */
+  if (canInstrument) canInstrument = !Backend_inInstrumentation(THREADID);
 
   /* Initialize the module if the pointer to the real call is not yet set */
   if (real_read == NULL)
@@ -469,9 +551,18 @@ ssize_t read (int fd, void *buf, size_t count)
     Backend_Enter_Instrumentation (4+Caller_Count[CALLER_IO]);
     Probe_IO_read_Entry (fd, count);
     TRACE_IO_CALLER(LAST_READ_TIME, 3);
+#ifdef HAVE_ERRNO_H
+		errno = errno_real;
+#endif
     res = real_read (fd, buf, count);
+#ifdef HAVE_ERRNO_H
+		errno_real = errno;
+#endif
     Probe_IO_read_Exit ();
     Backend_Leave_Instrumentation ();
+#ifdef HAVE_ERRNO_H
+		errno = errno_real;
+#endif
   }
   else if (real_read != NULL && !canInstrument)
   {
@@ -481,32 +572,37 @@ ssize_t read (int fd, void *buf, size_t count)
   else
   {
     /*
-     * An error is thrown if the application uses this symbol but during the initialization 
-     * we couldn't find the real implementation. This kind of situation could happen in the 
-     * very strange case where, by the time this symbol is first called, the libc (where the 
+     * An error is thrown if the application uses this symbol but during the initialization
+     * we couldn't find the real implementation. This kind of situation could happen in the
+     * very strange case where, by the time this symbol is first called, the libc (where the
      * real implementation is) has not been loaded yet. One suggestion if we see this error
-     * is to try to prepend the libc.so to the LD_PRELOAD to force to load it first. 
+     * is to try to prepend the libc.so to the LD_PRELOAD to force to load it first.
      */
     fprintf (stderr, PACKAGE_NAME": read is not hooked! exiting!!\n");
     abort();
   }
-
   return res;
 }
 
 /**
  * write
- * 
- * Wrapper for the system call 'write' 
+ *
+ * Wrapper for the system call 'write'
  */
 ssize_t write (int fd, const void *buf, size_t count)
 {
+#ifdef HAVE_ERRNO_H
+	int errno_real = errno;
+#endif
   /* Check whether IO instrumentation is enabled */
   int canInstrument = EXTRAE_INITIALIZED()                 &&
-                      !Backend_inInstrumentation(THREADID) && 
                       mpitrace_on &&
                       Extrae_get_trace_io();
   ssize_t res;
+
+  /* Can't be evaluated before because the compiler optimizes the if's clauses,
+	 * and THREADID calls a null callback if Extrae is not yet initialized */
+  if (canInstrument) canInstrument = !Backend_inInstrumentation(THREADID);
 
   /* Initialize the module if the pointer to the real call is not yet set */
   if (real_write == NULL)
@@ -528,9 +624,18 @@ ssize_t write (int fd, const void *buf, size_t count)
     Backend_Enter_Instrumentation (4+Caller_Count[CALLER_IO]);
     Probe_IO_write_Entry (fd, count);
     TRACE_IO_CALLER(LAST_READ_TIME, 3);
+#ifdef HAVE_ERRNO_H
+		errno = errno_real;
+#endif
     res = real_write (fd, buf, count);
+#ifdef HAVE_ERRNO_H
+		errno_real = errno;
+#endif
     Probe_IO_write_Exit ();
     Backend_Leave_Instrumentation ();
+#ifdef HAVE_ERRNO_H
+		errno = errno_real;
+#endif
   }
   else if (real_write != NULL && !canInstrument)
   {
@@ -540,32 +645,37 @@ ssize_t write (int fd, const void *buf, size_t count)
   else
   {
     /*
-     * An error is thrown if the application uses this symbol but during the initialization 
-     * we couldn't find the real implementation. This kind of situation could happen in the 
-     * very strange case where, by the time this symbol is first called, the libc (where the 
+     * An error is thrown if the application uses this symbol but during the initialization
+     * we couldn't find the real implementation. This kind of situation could happen in the
+     * very strange case where, by the time this symbol is first called, the libc (where the
      * real implementation is) has not been loaded yet. One suggestion if we see this error
-     * is to try to prepend the libc.so to the LD_PRELOAD to force to load it first. 
+     * is to try to prepend the libc.so to the LD_PRELOAD to force to load it first.
      */
     fprintf (stderr, PACKAGE_NAME": write is not hooked! exiting!!\n");
     abort();
   }
-
   return res;
 }
 
 /**
  * fread
- * 
- * Wrapper for the system call 'fread' 
+ *
+ * Wrapper for the system call 'fread'
  */
-size_t fread(void *ptr, size_t size, size_t nmemb, FILE *stream) 
+size_t fread(void *ptr, size_t size, size_t nmemb, FILE *stream)
 {
+#ifdef HAVE_ERRNO_H                                                             
+	int errno_real = errno;                                                       
+#endif                                                                          
   /* Check whether IO instrumentation is enabled */
   int canInstrument = EXTRAE_INITIALIZED()                 &&
-                      !Backend_inInstrumentation(THREADID) &&
                       mpitrace_on                          &&
                       Extrae_get_trace_io();
   size_t res;
+
+  /* Can't be evaluated before because the compiler optimizes the if's clauses,
+	 * and THREADID calls a null callback if Extrae is not yet initialized */
+  if (canInstrument) canInstrument = !Backend_inInstrumentation(THREADID);
 
   /* Initialize the module if the pointer to the real call is not yet set */
   if (real_fread == NULL)
@@ -587,9 +697,18 @@ size_t fread(void *ptr, size_t size, size_t nmemb, FILE *stream)
     Backend_Enter_Instrumentation (4+Caller_Count[CALLER_IO]);
     Probe_IO_fread_Entry (fileno(stream), size * nmemb);
     TRACE_IO_CALLER(LAST_READ_TIME, 3);
+#ifdef HAVE_ERRNO_H
+		errno = errno_real;
+#endif
     res = real_fread (ptr, size, nmemb, stream);
+#ifdef HAVE_ERRNO_H
+		errno_real = errno;
+#endif
     Probe_IO_fread_Exit ();
     Backend_Leave_Instrumentation ();
+#ifdef HAVE_ERRNO_H
+		errno = errno_real;
+#endif
   }
   else if (real_fread != NULL && !canInstrument)
   {
@@ -599,32 +718,37 @@ size_t fread(void *ptr, size_t size, size_t nmemb, FILE *stream)
   else
   {
     /*
-     * An error is thrown if the application uses this symbol but during the initialization 
-     * we couldn't find the real implementation. This kind of situation could happen in the 
-     * very strange case where, by the time this symbol is first called, the libc (where the 
+     * An error is thrown if the application uses this symbol but during the initialization
+     * we couldn't find the real implementation. This kind of situation could happen in the
+     * very strange case where, by the time this symbol is first called, the libc (where the
      * real implementation is) has not been loaded yet. One suggestion if we see this error
-     * is to try to prepend the libc.so to the LD_PRELOAD to force to load it first. 
+     * is to try to prepend the libc.so to the LD_PRELOAD to force to load it first.
      */
     fprintf (stderr, PACKAGE_NAME": fread is not hooked! exiting!!\n");
     abort();
   }
-
   return res;
 }
 
 /**
  * fwrite
- * 
- * Wrapper for the system call 'fwrite' 
+ *
+ * Wrapper for the system call 'fwrite'
  */
 size_t fwrite(const void *ptr, size_t size, size_t nmemb, FILE *stream)
 {
+#ifdef HAVE_ERRNO_H                                                             
+  int errno_real = errno;                                                       
+#endif                                                                          
   /* Check whether IO instrumentation is enabled */
   int canInstrument = EXTRAE_INITIALIZED()                 &&
-                      !Backend_inInstrumentation(THREADID) &&
                       mpitrace_on                          &&
                       Extrae_get_trace_io();
   size_t res;
+
+  /* Can't be evaluated before because the compiler optimizes the if's clauses,
+	 * and THREADID calls a null callback if Extrae is not yet initialized */
+	if (canInstrument) canInstrument = !Backend_inInstrumentation(THREADID);
 
   if (real_fwrite == NULL)
   {
@@ -645,9 +769,18 @@ size_t fwrite(const void *ptr, size_t size, size_t nmemb, FILE *stream)
     Backend_Enter_Instrumentation (4+Caller_Count[CALLER_IO]);
     Probe_IO_fwrite_Entry (fileno(stream), size * nmemb);
     TRACE_IO_CALLER(LAST_READ_TIME, 3);
+#ifdef HAVE_ERRNO_H
+		errno = errno_real;
+#endif
     res = real_fwrite (ptr, size, nmemb, stream);
+#ifdef HAVE_ERRNO_H
+		errno_real = errno;
+#endif
     Probe_IO_fwrite_Exit ();
     Backend_Leave_Instrumentation ();
+#ifdef HAVE_ERRNO_H
+		errno = errno_real;
+#endif
   }
   else if (real_fwrite != NULL && !canInstrument)
   {
@@ -657,32 +790,37 @@ size_t fwrite(const void *ptr, size_t size, size_t nmemb, FILE *stream)
   else
   {
     /*
-     * An error is thrown if the application uses this symbol but during the initialization 
-     * we couldn't find the real implementation. This kind of situation could happen in the 
-     * very strange case where, by the time this symbol is first called, the libc (where the 
+     * An error is thrown if the application uses this symbol but during the initialization
+     * we couldn't find the real implementation. This kind of situation could happen in the
+     * very strange case where, by the time this symbol is first called, the libc (where the
      * real implementation is) has not been loaded yet. One suggestion if we see this error
-     * is to try to prepend the libc.so to the LD_PRELOAD to force to load it first. 
+     * is to try to prepend the libc.so to the LD_PRELOAD to force to load it first.
      */
     fprintf (stderr, PACKAGE_NAME": fwrite is not hooked! exiting!!\n");
     abort();
   }
-
   return res;
 }
 
 /**
  * pread
- * 
- * Wrapper for the system call 'pread' 
+ *
+ * Wrapper for the system call 'pread'
  */
 ssize_t pread(int fd, void *buf, size_t count, off_t offset)
 {
+#ifdef HAVE_ERRNO_H                                                             
+  int errno_real = errno;                                                       
+#endif                                                                          
   /* Check whether IO instrumentation is enabled */
   int canInstrument = EXTRAE_INITIALIZED()                 &&
-                      !Backend_inInstrumentation(THREADID) &&
                       mpitrace_on                          &&
                       Extrae_get_trace_io();
   ssize_t res;
+
+  /* Can't be evaluated before because the compiler optimizes the if's clauses,
+	 * and THREADID calls a null callback if Extrae is not yet initialized */
+	if (canInstrument) canInstrument = !Backend_inInstrumentation(THREADID);
 
   /* Initialize the module if the pointer to the real call is not yet set */
   if (real_pread == NULL)
@@ -704,9 +842,18 @@ ssize_t pread(int fd, void *buf, size_t count, off_t offset)
     Backend_Enter_Instrumentation (4+Caller_Count[CALLER_IO]);
     Probe_IO_pread_Entry (fd, count);
     TRACE_IO_CALLER(LAST_READ_TIME, 3);
+#ifdef HAVE_ERRNO_H
+		errno = errno_real;
+#endif
     res = real_pread (fd, buf, count, offset);
+#ifdef HAVE_ERRNO_H
+		errno_real = errno;
+#endif
     Probe_IO_pread_Exit ();
     Backend_Leave_Instrumentation ();
+#ifdef HAVE_ERRNO_H
+		errno = errno_real;
+#endif
   }
   else if (real_pread != NULL && !canInstrument)
   {
@@ -716,32 +863,37 @@ ssize_t pread(int fd, void *buf, size_t count, off_t offset)
   else
   {
     /*
-     * An error is thrown if the application uses this symbol but during the initialization 
-     * we couldn't find the real implementation. This kind of situation could happen in the 
-     * very strange case where, by the time this symbol is first called, the libc (where the 
+     * An error is thrown if the application uses this symbol but during the initialization
+     * we couldn't find the real implementation. This kind of situation could happen in the
+     * very strange case where, by the time this symbol is first called, the libc (where the
      * real implementation is) has not been loaded yet. One suggestion if we see this error
-     * is to try to prepend the libc.so to the LD_PRELOAD to force to load it first. 
+     * is to try to prepend the libc.so to the LD_PRELOAD to force to load it first.
      */
     fprintf (stderr, PACKAGE_NAME": pread is not hooked! exiting!!\n");
     abort();
   }
-
   return res;
 }
 
 /**
  * pwrite
- * 
- * Wrapper for the system call 'pwrite' 
+ *
+ * Wrapper for the system call 'pwrite'
  */
 ssize_t pwrite(int fd, const void *buf, size_t count, off_t offset)
 {
+#ifdef HAVE_ERRNO_H                                                             
+	int errno_real = errno;                                                       
+#endif                                                                          
   /* Check whether IO instrumentation is enabled */
   int canInstrument = EXTRAE_INITIALIZED()                 &&
-                      !Backend_inInstrumentation(THREADID) &&
                       mpitrace_on                          &&
                       Extrae_get_trace_io();
   ssize_t res;
+
+  /* Can't be evaluated before because the compiler optimizes the if's clauses,
+	 * and THREADID calls a null callback if Extrae is not yet initialized */
+	if (canInstrument) canInstrument = !Backend_inInstrumentation(THREADID);
 
   /* Initialize the module if the pointer to the real call is not yet set */
   if (real_pwrite == NULL)
@@ -763,9 +915,18 @@ ssize_t pwrite(int fd, const void *buf, size_t count, off_t offset)
     Backend_Enter_Instrumentation (4+Caller_Count[CALLER_IO]);
     Probe_IO_pwrite_Entry (fd, count);
     TRACE_IO_CALLER(LAST_READ_TIME, 3);
+#ifdef HAVE_ERRNO_H
+		errno = errno_real;
+#endif
     res = real_pwrite (fd, buf, count, offset);
+#ifdef HAVE_ERRNO_H
+		errno_real = errno;
+#endif
     Probe_IO_pwrite_Exit ();
     Backend_Leave_Instrumentation ();
+#ifdef HAVE_ERRNO_H
+		errno = errno_real;
+#endif
   }
   else if (real_pwrite != NULL && !canInstrument)
   {
@@ -775,32 +936,37 @@ ssize_t pwrite(int fd, const void *buf, size_t count, off_t offset)
   else
   {
     /*
-     * An error is thrown if the application uses this symbol but during the initialization 
-     * we couldn't find the real implementation. This kind of situation could happen in the 
-     * very strange case where, by the time this symbol is first called, the libc (where the 
+     * An error is thrown if the application uses this symbol but during the initialization
+     * we couldn't find the real implementation. This kind of situation could happen in the
+     * very strange case where, by the time this symbol is first called, the libc (where the
      * real implementation is) has not been loaded yet. One suggestion if we see this error
-     * is to try to prepend the libc.so to the LD_PRELOAD to force to load it first. 
+     * is to try to prepend the libc.so to the LD_PRELOAD to force to load it first.
      */
     fprintf (stderr, PACKAGE_NAME": pwrite is not hooked! exiting!!\n");
     abort();
   }
-
   return res;
 }
 
 /**
  * readv
- * 
- * Wrapper for the system call 'readv' 
+ *
+ * Wrapper for the system call 'readv'
  */
 ssize_t readv (int fd, const struct iovec *iov, int iovcnt)
 {
+#ifdef HAVE_ERRNO_H                                                             
+	int errno_real = errno;                                                       
+#endif                                                                          
   /* Check whether IO instrumentation is enabled */
   int canInstrument = EXTRAE_INITIALIZED()                 &&
-                      !Backend_inInstrumentation(THREADID) &&
                       mpitrace_on                          &&
                       Extrae_get_trace_io();
   ssize_t res;
+
+  /* Can't be evaluated before because the compiler optimizes the if's clauses,
+	 * and THREADID calls a null callback if Extrae is not yet initialized */
+	if (canInstrument) canInstrument = !Backend_inInstrumentation(THREADID);
 
   /* Initialize the module if the pointer to the real call is not yet set */
   if (real_readv == NULL)
@@ -831,9 +997,18 @@ ssize_t readv (int fd, const struct iovec *iov, int iovcnt)
 
     Probe_IO_readv_Entry (fd, size);
     TRACE_IO_CALLER(LAST_READ_TIME, 3);
+#ifdef HAVE_ERRNO_H
+		errno = errno_real;
+#endif
     res = real_readv (fd, iov, iovcnt);
+#ifdef HAVE_ERRNO_H
+		errno_real = errno;
+#endif
     Probe_IO_readv_Exit ();
     Backend_Leave_Instrumentation ();
+#ifdef HAVE_ERRNO_H
+		errno = errno_real;
+#endif
   }
   else if (real_readv != NULL && !canInstrument)
   {
@@ -843,32 +1018,37 @@ ssize_t readv (int fd, const struct iovec *iov, int iovcnt)
   else
   {
     /*
-     * An error is thrown if the application uses this symbol but during the initialization 
-     * we couldn't find the real implementation. This kind of situation could happen in the 
-     * very strange case where, by the time this symbol is first called, the libc (where the 
+     * An error is thrown if the application uses this symbol but during the initialization
+     * we couldn't find the real implementation. This kind of situation could happen in the
+     * very strange case where, by the time this symbol is first called, the libc (where the
      * real implementation is) has not been loaded yet. One suggestion if we see this error
-     * is to try to prepend the libc.so to the LD_PRELOAD to force to load it first. 
+     * is to try to prepend the libc.so to the LD_PRELOAD to force to load it first.
      */
     fprintf (stderr, PACKAGE_NAME": readv is not hooked! exiting!!\n");
     abort();
   }
-
   return res;
 }
 
 /**
  * writev
- * 
- * Wrapper for the system call 'writev' 
+ *
+ * Wrapper for the system call 'writev'
  */
 ssize_t writev(int fd, const struct iovec *iov, int iovcnt)
 {
+#ifdef HAVE_ERRNO_H                                                             
+	int errno_real = errno;                                                       
+#endif                                                                          
   /* Check whether IO instrumentation is enabled */
   int canInstrument = EXTRAE_INITIALIZED()                 &&
-                      !Backend_inInstrumentation(THREADID) &&
                       mpitrace_on                          &&
                       Extrae_get_trace_io();
   ssize_t res;
+
+  /* Can't be evaluated before because the compiler optimizes the if's clauses,
+	 * and THREADID calls a null callback if Extrae is not yet initialized */
+	if (canInstrument) canInstrument = !Backend_inInstrumentation(THREADID);
 
   /* Initialize the module if the pointer to the real call is not yet set */
   if (real_writev == NULL)
@@ -878,14 +1058,14 @@ ssize_t writev(int fd, const struct iovec *iov, int iovcnt)
 
 #if defined(DEBUG)
   if (canInstrument)
-  { 
+  {
     fprintf (stderr, PACKAGE_NAME": writev is at %p\n", real_writev);
     fprintf (stderr, PACKAGE_NAME": writev params %d %p %d\n", fd, iov, iovcnt);
   }
 #endif
-  
+
   if (real_writev != NULL && canInstrument)
-  { 
+  {
     /* Instrumentation is enabled, emit events and invoke the real call */
     int i;
     ssize_t size = 0;
@@ -899,45 +1079,59 @@ ssize_t writev(int fd, const struct iovec *iov, int iovcnt)
 
     Probe_IO_writev_Entry (fd, size);
     TRACE_IO_CALLER(LAST_READ_TIME, 3);
+#ifdef HAVE_ERRNO_H
+		errno = errno_real;
+#endif
     res = real_writev (fd, iov, iovcnt);
+#ifdef HAVE_ERRNO_H
+		errno_real = errno;
+#endif
     Probe_IO_writev_Exit ();
     Backend_Leave_Instrumentation ();
+#ifdef HAVE_ERRNO_H
+		errno = errno_real;
+#endif
   }
   else if (real_writev != NULL && !canInstrument)
-  { 
+  {
     /* Instrumentation is not enabled, bypass to the real call */
     res = real_writev (fd, iov, iovcnt);
   }
   else
-  { 
+  {
     /*
-     * An error is thrown if the application uses this symbol but during the initialization 
-     * we couldn't find the real implementation. This kind of situation could happen in the 
-     * very strange case where, by the time this symbol is first called, the libc (where the 
+     * An error is thrown if the application uses this symbol but during the initialization
+     * we couldn't find the real implementation. This kind of situation could happen in the
+     * very strange case where, by the time this symbol is first called, the libc (where the
      * real implementation is) has not been loaded yet. One suggestion if we see this error
-     * is to try to prepend the libc.so to the LD_PRELOAD to force to load it first. 
+     * is to try to prepend the libc.so to the LD_PRELOAD to force to load it first.
      */
     fprintf (stderr, PACKAGE_NAME": writev is not hooked! exiting!!\n");
     abort();
   }
-
   return res;
 }
 
 /**
  * preadv
- * 
- * Wrapper for the system call 'preadv' 
+ *
+ * Wrapper for the system call 'preadv'
  */
 ssize_t preadv(int fd, const struct iovec *iov, int iovcnt, off_t offset)
 {
+#ifdef HAVE_ERRNO_H                                                             
+	int errno_real = errno;                                                       
+#endif                                                                          
   /* Check whether IO instrumentation is enabled */
   int canInstrument = EXTRAE_INITIALIZED()                 &&
-                      !Backend_inInstrumentation(THREADID) &&
                       mpitrace_on                          &&
                       Extrae_get_trace_io();
   ssize_t res;
-  
+
+  /* Can't be evaluated before because the compiler optimizes the if's clauses,
+	 * and THREADID calls a null callback if Extrae is not yet initialized */
+  if (canInstrument) canInstrument = !Backend_inInstrumentation(THREADID);
+
   /* Initialize the module if the pointer to the real call is not yet set */
   if (real_preadv == NULL)
   {
@@ -946,14 +1140,14 @@ ssize_t preadv(int fd, const struct iovec *iov, int iovcnt, off_t offset)
 
 #if defined(DEBUG)
   if (canInstrument)
-  { 
+  {
     fprintf (stderr, PACKAGE_NAME": preadv is at %p\n", real_preadv);
     fprintf (stderr, PACKAGE_NAME": preadv params %d %p %d %ld\n", fd, iov, iovcnt, offset);
   }
 #endif
-  
+
   if (real_preadv != NULL && canInstrument)
-  { 
+  {
     /* Instrumentation is enabled, emit events and invoke the real call */
     int i;
     ssize_t size = 0;
@@ -967,44 +1161,58 @@ ssize_t preadv(int fd, const struct iovec *iov, int iovcnt, off_t offset)
 
     Probe_IO_preadv_Entry (fd, size);
     TRACE_IO_CALLER(LAST_READ_TIME, 3);
+#ifdef HAVE_ERRNO_H
+		errno = errno_real;
+#endif
     res = real_preadv (fd, iov, iovcnt, offset);
+#ifdef HAVE_ERRNO_H
+		errno_real = errno;
+#endif
     Probe_IO_preadv_Exit ();
     Backend_Leave_Instrumentation ();
+#ifdef HAVE_ERRNO_H
+		errno = errno_real;
+#endif
   }
   else if (real_preadv != NULL && !canInstrument)
-  { 
+  {
     /* Instrumentation is not enabled, bypass to the real call */
     res = real_preadv (fd, iov, iovcnt, offset);
   }
   else
-  { 
+  {
     /*
-     * An error is thrown if the application uses this symbol but during the initialization 
-     * we couldn't find the real implementation. This kind of situation could happen in the 
-     * very strange case where, by the time this symbol is first called, the libc (where the 
+     * An error is thrown if the application uses this symbol but during the initialization
+     * we couldn't find the real implementation. This kind of situation could happen in the
+     * very strange case where, by the time this symbol is first called, the libc (where the
      * real implementation is) has not been loaded yet. One suggestion if we see this error
-     * is to try to prepend the libc.so to the LD_PRELOAD to force to load it first. 
+     * is to try to prepend the libc.so to the LD_PRELOAD to force to load it first.
      */
     fprintf (stderr, PACKAGE_NAME": preadv is not hooked! exiting!!\n");
     abort();
   }
-
   return res;
 }
 
 /**
  * preadv64
- * 
- * Wrapper for the system call 'preadv64' 
+ *
+ * Wrapper for the system call 'preadv64'
  */
 ssize_t preadv64(int fd, const struct iovec *iov, int iovcnt, __off64_t offset)
 {
+#ifdef HAVE_ERRNO_H                                                             
+	int errno_real = errno;                                                       
+#endif                                                                          
   /* Check whether IO instrumentation is enabled */
   int canInstrument = EXTRAE_INITIALIZED()                 &&
-                      !Backend_inInstrumentation(THREADID) &&
                       mpitrace_on                          &&
                       Extrae_get_trace_io();
   ssize_t res;
+
+  /* Can't be evaluated before because the compiler optimizes the if's clauses,
+	 * and THREADID calls a null callback if Extrae is not yet initialized */
+	if (canInstrument) canInstrument = !Backend_inInstrumentation(THREADID);
 
   /* Initialize the module if the pointer to the real call is not yet set */
   if (real_preadv64 == NULL)
@@ -1035,9 +1243,18 @@ ssize_t preadv64(int fd, const struct iovec *iov, int iovcnt, __off64_t offset)
 
     Probe_IO_preadv_Entry (fd, size);
     TRACE_IO_CALLER(LAST_READ_TIME, 3);
+#ifdef HAVE_ERRNO_H
+		errno = errno_real;
+#endif
     res = real_preadv64 (fd, iov, iovcnt, offset);
+#ifdef HAVE_ERRNO_H
+		errno_real = errno;
+#endif
     Probe_IO_preadv_Exit ();
     Backend_Leave_Instrumentation ();
+#ifdef HAVE_ERRNO_H
+		errno = errno_real;
+#endif
   }
   else if (real_preadv64 != NULL && !canInstrument)
   {
@@ -1047,33 +1264,38 @@ ssize_t preadv64(int fd, const struct iovec *iov, int iovcnt, __off64_t offset)
   else
   {
     /*
-     * An error is thrown if the application uses this symbol but during the initialization 
-     * we couldn't find the real implementation. This kind of situation could happen in the 
-     * very strange case where, by the time this symbol is first called, the libc (where the 
+     * An error is thrown if the application uses this symbol but during the initialization
+     * we couldn't find the real implementation. This kind of situation could happen in the
+     * very strange case where, by the time this symbol is first called, the libc (where the
      * real implementation is) has not been loaded yet. One suggestion if we see this error
-     * is to try to prepend the libc.so to the LD_PRELOAD to force to load it first. 
+     * is to try to prepend the libc.so to the LD_PRELOAD to force to load it first.
      */
     fprintf (stderr, PACKAGE_NAME": preadv64 is not hooked! exiting!!\n");
     abort();
   }
-
   return res;
 }
 
 /**
  * pwritev
- * 
- * Wrapper for the system call 'pwritev' 
+ *
+ * Wrapper for the system call 'pwritev'
  */
 ssize_t pwritev(int fd, const struct iovec *iov, int iovcnt, off_t offset)
 {
+#ifdef HAVE_ERRNO_H                                                             
+	int errno_real = errno;                                                       
+#endif                                                                          
   /* Check whether IO instrumentation is enabled */
   int canInstrument = EXTRAE_INITIALIZED()                 &&
-                      !Backend_inInstrumentation(THREADID) &&
                       mpitrace_on                          &&
                       Extrae_get_trace_io();
   ssize_t res;
-  
+
+  /* Can't be evaluated before because the compiler optimizes the if's clauses,
+	 * and THREADID calls a null callback if Extrae is not yet initialized */
+	if (canInstrument) canInstrument = !Backend_inInstrumentation(THREADID);
+
   /* Initialize the module if the pointer to the real call is not yet set */
   if (real_pwritev == NULL)
   {
@@ -1082,14 +1304,14 @@ ssize_t pwritev(int fd, const struct iovec *iov, int iovcnt, off_t offset)
 
 #if defined(DEBUG)
   if (canInstrument)
-  { 
+  {
     fprintf (stderr, PACKAGE_NAME": pwritev is at %p\n", real_pwritev);
     fprintf (stderr, PACKAGE_NAME": pwritev params %d %p %d %ld\n", fd, iov, iovcnt, offset);
   }
 #endif
-  
+
   if (real_pwritev != NULL && canInstrument)
-  { 
+  {
     /* Instrumentation is enabled, emit events and invoke the real call */
     int i;
     ssize_t size = 0;
@@ -1103,44 +1325,58 @@ ssize_t pwritev(int fd, const struct iovec *iov, int iovcnt, off_t offset)
 
     Probe_IO_pwritev_Entry (fd, size);
     TRACE_IO_CALLER(LAST_READ_TIME, 3);
+#ifdef HAVE_ERRNO_H
+		errno = errno_real;
+#endif
     res = real_pwritev (fd, iov, iovcnt, offset);
+#ifdef HAVE_ERRNO_H
+		errno_real = errno;
+#endif
     Probe_IO_pwritev_Exit ();
     Backend_Leave_Instrumentation ();
+#ifdef HAVE_ERRNO_H
+		errno = errno_real;
+#endif
   }
   else if (real_pwritev != NULL && !canInstrument)
-  { 
+  {
     /* Instrumentation is not enabled, bypass to the real call */
     res = real_pwritev (fd, iov, iovcnt, offset);
   }
   else
-  { 
+  {
     /*
-     * An error is thrown if the application uses this symbol but during the initialization 
-     * we couldn't find the real implementation. This kind of situation could happen in the 
-     * very strange case where, by the time this symbol is first called, the libc (where the 
+     * An error is thrown if the application uses this symbol but during the initialization
+     * we couldn't find the real implementation. This kind of situation could happen in the
+     * very strange case where, by the time this symbol is first called, the libc (where the
      * real implementation is) has not been loaded yet. One suggestion if we see this error
-     * is to try to prepend the libc.so to the LD_PRELOAD to force to load it first. 
+     * is to try to prepend the libc.so to the LD_PRELOAD to force to load it first.
      */
     fprintf (stderr, PACKAGE_NAME": pwritev is not hooked! exiting!!\n");
     abort();
   }
-
   return res;
 }
 
 /**
  * pwritev64
- * 
- * Wrapper for the system call 'pwritev64' 
+ *
+ * Wrapper for the system call 'pwritev64'
  */
 ssize_t pwritev64(int fd, const struct iovec *iov, int iovcnt, __off64_t offset)
 {
+#ifdef HAVE_ERRNO_H                                                             
+	int errno_real = errno;                                                       
+#endif                                                                          
   /* Check whether IO instrumentation is enabled */
   int canInstrument = EXTRAE_INITIALIZED()                 &&
-                      !Backend_inInstrumentation(THREADID) &&
                       mpitrace_on                          &&
                       Extrae_get_trace_io();
   ssize_t res;
+
+  /* Can't be evaluated before because the compiler optimizes the if's clauses,
+	 * and THREADID calls a null callback if Extrae is not yet initialized */
+	if (canInstrument) canInstrument = !Backend_inInstrumentation(THREADID);
 
   /* Initialize the module if the pointer to the real call is not yet set */
   if (real_pwritev64 == NULL)
@@ -1171,9 +1407,18 @@ ssize_t pwritev64(int fd, const struct iovec *iov, int iovcnt, __off64_t offset)
 
     Probe_IO_pwritev_Entry (fd, size);
     TRACE_IO_CALLER(LAST_READ_TIME, 3);
+#ifdef HAVE_ERRNO_H
+		errno = errno_real;
+#endif
     res = real_pwritev64 (fd, iov, iovcnt, offset);
+#ifdef HAVE_ERRNO_H
+		errno_real = errno;
+#endif
     Probe_IO_pwritev_Exit ();
     Backend_Leave_Instrumentation ();
+#ifdef HAVE_ERRNO_H
+		errno = errno_real;
+#endif
   }
   else if (real_pwritev64 != NULL && !canInstrument)
   {
@@ -1183,72 +1428,15 @@ ssize_t pwritev64(int fd, const struct iovec *iov, int iovcnt, __off64_t offset)
   else
   {
     /*
-     * An error is thrown if the application uses this symbol but during the initialization 
-     * we couldn't find the real implementation. This kind of situation could happen in the 
-     * very strange case where, by the time this symbol is first called, the libc (where the 
+     * An error is thrown if the application uses this symbol but during the initialization
+     * we couldn't find the real implementation. This kind of situation could happen in the
+     * very strange case where, by the time this symbol is first called, the libc (where the
      * real implementation is) has not been loaded yet. One suggestion if we see this error
-     * is to try to prepend the libc.so to the LD_PRELOAD to force to load it first. 
+     * is to try to prepend the libc.so to the LD_PRELOAD to force to load it first.
      */
     fprintf (stderr, PACKAGE_NAME": pwritev64 is not hooked! exiting!!\n");
     abort();
   }
-
-  return res;
-
-}
-
-
-int ioctl(int fd, int request, char *argp)
-{
-  /* Check whether IO instrumentation is enabled */
-  int canInstrument = EXTRAE_INITIALIZED()                 &&
-                      !Backend_inInstrumentation(THREADID) && 
-                      mpitrace_on &&
-                      Extrae_get_trace_io();
-  ssize_t res;
-
-  /* Initialize the module if the pointer to the real call is not yet set */
-  if (real_ioctl == NULL)
-  {
-    Extrae_iotrace_init();
-  }
-
-#if defined(DEBUG)
-  if (canInstrument)
-  {
-    fprintf (stderr, PACKAGE_NAME": ioctl is at %p\n", real_ioctl);
-    fprintf (stderr, PACKAGE_NAME": ioctl params %d %d %p\n", fd, request, argp);
-  }
-#endif
-
-  if (real_ioctl != NULL && canInstrument)
-  {
-    /* Instrumentation is enabled, emit events and invoke the real call */
-    Backend_Enter_Instrumentation (4+Caller_Count[CALLER_IO]);
-    Probe_IO_ioctl_Entry (fd, request);
-    TRACE_IO_CALLER(LAST_READ_TIME, 3);
-    res = real_ioctl (fd, request, argp);
-    Probe_IO_ioctl_Exit ();
-    Backend_Leave_Instrumentation ();
-  }
-  else if (real_ioctl != NULL && !canInstrument)
-  {
-    /* Instrumentation is not enabled, bypass to the real call */
-    res = real_ioctl (fd, request, argp);
-  }
-  else
-  {
-    /*
-     * An error is thrown if the application uses this symbol but during the initialization 
-     * we couldn't find the real implementation. This kind of situation could happen in the 
-     * very strange case where, by the time this symbol is first called, the libc (where the 
-     * real implementation is) has not been loaded yet. One suggestion if we see this error
-     * is to try to prepend the libc.so to the LD_PRELOAD to force to load it first. 
-     */
-    fprintf (stderr, PACKAGE_NAME": ioctl is not hooked! exiting!!\n");
-    abort();
-  }
-
   return res;
 }
 

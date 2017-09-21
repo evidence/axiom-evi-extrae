@@ -150,6 +150,8 @@
 #include "malloc_wrapper.h"
 #include "io_probe.h"
 #include "io_wrapper.h"
+#include "syscall_probe.h"
+#include "syscall_wrapper.h"
 #include "taskid.h"
 
 int Extrae_Flush_Wrapper (Buffer_t *buffer);
@@ -183,6 +185,13 @@ static int requestedIOInstrumentation = FALSE;
 void setRequestedIOInstrumentation (int b)
 {
 	requestedIOInstrumentation = b;
+}
+
+static int requestedSysCallInstrumentation = FALSE;
+
+void setRequestedSysCallInstrumentation (int b)
+{
+	requestedSysCallInstrumentation = b;
 }
 
 static void Backend_Finalize_close_mpits (pid_t pid, int thread, int append);
@@ -1090,6 +1099,7 @@ void Parse_Callers (int me, char * mpi_callers, int type)
 		const char *s_sampling = "Sampling";
 		const char *s_malloc = "Dynamic-Memory";
 		const char *s_io = "Input/Output";
+		const char *s_syscall = "System Calls";
 		const char *s_unknown = "unknown?";
 
 		if (CALLER_MPI == type)
@@ -1100,6 +1110,8 @@ void Parse_Callers (int me, char * mpi_callers, int type)
 			s = s_malloc;
 		else if (CALLER_IO == type)
 			s = s_io;
+		else if (CALLER_SYSCALL == type)
+			s = s_syscall;
 		else
 			s = s_unknown;
 
@@ -2066,6 +2078,10 @@ int Backend_postInitialize (int rank, int world_size, unsigned init_event,
 	if (requestedIOInstrumentation)
 		Extrae_set_trace_io (TRUE);
 
+	/* Enable system call instrumentation if requested */
+	if (requestedSysCallInstrumentation)
+	  Extrae_set_trace_syscall (TRUE);
+
 	/* Enable sampling capabilities */
 	Extrae_setSamplingEnabled (TRUE);
 
@@ -2428,15 +2444,21 @@ void Backend_Finalize (void)
 
 //static int Extrae_inInstrumentation = FALSE;
 static int *Extrae_inInstrumentation = NULL;
+static int *Extrae_inSampling = NULL;
 
 int Backend_inInstrumentation (unsigned thread)
 {
-	if (Extrae_inInstrumentation != NULL)
-		return Extrae_inInstrumentation[thread];
+	if ((Extrae_inInstrumentation != NULL) && (Extrae_inSampling != NULL))
+		return (Extrae_inInstrumentation[thread] || Extrae_inSampling[thread]);
 	else
 		return FALSE;
-	/* return Extrae_inInstrumentation; */
 }
+
+void Backend_setInSampling (unsigned thread, int insampling)      
+{                                                                               
+	  if (Extrae_inSampling != NULL)                                         
+			    Extrae_inSampling[thread] = insampling;                       
+}                                                                               
 
 void Backend_setInInstrumentation (unsigned thread, int ininstrumentation)
 {
@@ -2446,12 +2468,18 @@ void Backend_setInInstrumentation (unsigned thread, int ininstrumentation)
 
 void Backend_ChangeNumberOfThreads_InInstrumentation (unsigned nthreads)
 {
-	Extrae_inInstrumentation = (int*) realloc (Extrae_inInstrumentation,
-	  sizeof(int)*nthreads);
+	Extrae_inInstrumentation = (int*) realloc (Extrae_inInstrumentation, sizeof(int)*nthreads);
 	if (Extrae_inInstrumentation == NULL)
 	{
 		fprintf (stderr, PACKAGE_NAME
 		  ": Failed to allocate memory for inInstrumentation structure\n");
+		exit (-1);
+	}
+	Extrae_inSampling = (int*) realloc (Extrae_inSampling, sizeof(int)*nthreads);
+	if (Extrae_inSampling == NULL)
+	{
+		fprintf (stderr, PACKAGE_NAME
+		  ": Failed to allocate memory for inSampling structure\n");
 		exit (-1);
 	}
 }
