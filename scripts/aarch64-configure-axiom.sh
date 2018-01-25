@@ -9,7 +9,7 @@ BASEDIR=$(dirname "$0")
 [ -z "$AXIOM_DIR" ] && AXIOM_DIR=$HOME/axiom-evi
 
 # check AXIOM_DIR
-[ -f "$AXIOM_DIR/scripts/config.mk" ] || {
+[ -f "$AXIOM_DIR/scripts/configure.mk" ] || {
     echo "AXIOM_DIR shell improperly set!"
     echo "(axiom dir used is '$AXIOM_DIR')"
     exit 255;
